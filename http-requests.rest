@@ -1,0 +1,44 @@
+### Создание роли (student или parent)
+POST http://localhost:8080/roles
+Content-Type: application/json
+
+{
+  "id": "id_1",
+  "role": "parent"
+}
+
+###
+
+### Выставление счёта (invoice)
+POST http://localhost:8080/invoice
+Content-Type: application/json
+
+{
+  "id": "id_1",
+  "role": "parent",
+  "amount": 2000.00,
+  "quantity": 3
+}
+
+###
+
+### Приём платежа (payment)
+POST http://localhost:8080/payment
+Content-Type: application/json
+
+{
+  "id": "id_1",
+  "role": "parent",
+  "amount": 2000.00,
+  "quantity": 3
+}
+
+###
+
+### Получить историю всех платежей
+GET http://localhost:8080/payments
+
+###
+
+### Получить историю по конкретному пользователю
+GET http://localhost:8080/payments/id_1/parent

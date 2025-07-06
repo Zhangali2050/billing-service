@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Billing API Docs</title>
+</head>
+<body>
+  <h1>Billing API — Sandbox</h1>
+  <p><strong>Base URL:</strong> http://localhost:8080</p>
+
+  <h2>Authentication</h2>
+  <p>Use HTTP header: <code>X-Api-Key: sandbox_123</code></p>
+
+  <h2>Endpoints</h2>
+  <ul>
+    <li><strong>POST /roles</strong> — Register user with role</li>
+    <li><strong>POST /invoice</strong> — Create invoice</li>
+    <li><strong>POST /payment</strong> — Register payment</li>
+    <li><strong>GET /payments</strong> — All payments</li>
+    <li><strong>GET /payments/:id/:role</strong> — Payments for user</li>
+  </ul>
+
+  <h2>Example (Curl)</h2>
+  <pre>
+curl -X POST http://localhost:8080/payment \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: sandbox_123" \
+  -d '{
+    "id": "user_1",
+    "role": "parent",
+    "amount": 1500,
+    "quantity": 1
+  }'
+  </pre>
+</body>
+</html>

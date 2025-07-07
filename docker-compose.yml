@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:15
@@ -12,12 +10,21 @@ services:
       - "5432:5432"
     volumes:
       - ./migrations:/docker-entrypoint-initdb.d
+
   app:
     build: .
+    container_name: billing-service-app
     ports:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://postgres:password@db:5432/billing?sslmode=disable
+      API_KEY: sandbox_123
+      AIRBA_BASE_URL: https://sps.airbapay.kz/acquiring-api
+      AIRBA_TERMINAL_ID: asa2323dasdas33dwdq
+      AIRBA_USER: merchant
+      AIRBA_PASSWORD: "777"
     depends_on:
       - db
-
+    volumes:
+      - .:/app
+    command: ["/bin/sh", "-c", "./wait-for.sh postgres:5432 -- ./main"]

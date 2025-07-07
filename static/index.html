@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Billing API Docs</title>
@@ -18,6 +18,15 @@
     <li><strong>POST /payment</strong> — Register payment</li>
     <li><strong>GET /payments</strong> — All payments</li>
     <li><strong>GET /payments/:id/:role</strong> — Payments for user</li>
+    <li><strong>POST /airba/auth</strong> — Get AirbaPay JWT token</li>
+    <li><strong>POST /airba/payment</strong> — Create payment session</li>
+    <li><strong>POST /airba/payment/card</strong> — Create payment with saved card</li>
+    <li><strong>POST /airba/charge</strong> — Confirm two-stage payment</li>
+    <li><strong>POST /airba/return</strong> — Refund payment</li>
+    <li><strong>GET /airba/status/:id</strong> — Payment status</li>
+    <li><strong>POST /airba/cards</strong> — Save card</li>
+    <li><strong>GET /airba/cards/:accountId</strong> — List saved cards</li>
+    <li><strong>DELETE /airba/cards/:id</strong> — Delete saved card</li>
   </ul>
 
   <h2>Example (Curl)</h2>

@@ -1,4 +1,4 @@
-### Создание роли (student или parent)
+### Создание роли
 POST http://localhost:8080/roles
 Content-Type: application/json
 
@@ -9,36 +9,145 @@ Content-Type: application/json
 
 ###
 
-### Выставление счёта (invoice)
-POST http://localhost:8080/invoice
-Content-Type: application/json
-
-{
-  "id": "id_1",
-  "role": "parent",
-  "amount": 2000.00,
-  "quantity": 3
-}
-
-###
-
-### Приём платежа (payment)
+### Принять платёж
 POST http://localhost:8080/payment
 Content-Type: application/json
 
 {
   "id": "id_1",
   "role": "parent",
-  "amount": 2000.00,
-  "quantity": 3
+  "amount": 1500,
+  "quantity": 2
 }
 
 ###
 
-### Получить историю всех платежей
+### Получить все платежи
 GET http://localhost:8080/payments
 
 ###
 
-### Получить историю по конкретному пользователю
-GET http://localhost:8080/payments/id_1/parent
+### Авторизация в Airba Pay (тестовые данные)
+POST https://ps.airbapay.kz/acquiring-api/api/v1/auth/sign-in
+Content-Type: application/json
+
+{
+  "user": "merchant",
+  "password": "777",
+  "terminal_id": "asa2323dasdas33dwdq"
+}
+
+###
+
+### Создание платежа
+POST http://localhost:8080/airba/payment
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "invoice_id": "inv001",
+  "amount": 1000,
+  "currency": "KZT",
+  "description": "Test payment",
+  "account_id": "user_123"
+}
+
+###
+
+### Сохранить карту
+POST http://localhost:8080/airba/cards
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "account_id": "user_123"
+}
+
+###
+
+### Получить сохранённые карты
+GET http://localhost:8080/airba/cards/user_123
+Authorization: Bearer {{access_token}}
+
+###
+
+### Удалить сохранённую карту
+DELETE http://localhost:8080/airba/cards/123456
+Authorization: Bearer {{access_token}}
+
+###
+
+### Создать платёж по сохранённой карте
+POST http://localhost:8080/airba/payment/card/123456
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "invoice_id": "inv002",
+  "amount": 2500,
+  "currency": "KZT",
+  "description": "Оплата по сохранённой карте"
+}
+
+###
+
+### Выполнить списание (charge)
+POST http://localhost:8080/airba/charge
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "payment_id": "abc123"
+}
+
+###
+
+### Возврат средств
+POST http://localhost:8080/airba/refund
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "payment_id": "abc123",
+  "amount": 1000
+}
+
+###
+
+### Получить статус платежа
+GET http://localhost:8080/airba/status/abc123
+Authorization: Bearer {{access_token}}
+
+
+###
+
+
+### Webhook Payment Test
+POST http://localhost:8080/webhook/payment
+Content-Type: application/json
+
+{
+  "id": "demo-id",
+  "invoice_id": "test-invoice-123",
+  "amount": 1500,
+  "currency": "KZT",
+  "status": "PAID",
+  "description": "demo",
+  "signature": "BASE64_SIGNATURE"
+}
+
+
+###
+
+
+### Webhook Save Card Test
+POST http://localhost:8080/webhook/save-card
+Content-Type: application/json
+
+{
+  "account_id": "account_123",
+  "card_id": "card_abc",
+  "status": "active",
+  "signature": "BASE64_SIGNATURE"
+}
+

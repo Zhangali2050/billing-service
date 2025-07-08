@@ -1,54 +1,75 @@
 package handler
 
 import (
-	"billing-service/internal/airba"
+	"billing-service/internal/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
-// CardsHandler обрабатывает сохранённые карты клиента
 type CardsHandler struct {
-	Client *airba.Client
+	cardService   *service.CardService
+	refundService *service.RefundService
 }
 
-// NewCardsHandler создает новый обработчик карт
-func NewCardsHandler(client *airba.Client) *CardsHandler {
-	return &CardsHandler{Client: client}
+func NewCardsHandler(card *service.CardService, refund *service.RefundService) *CardsHandler {
+	return &CardsHandler{
+		cardService:   card,
+		refundService: refund,
+	}
 }
 
-// POST /cards — сохранить карту
+// POST /cards { account_id: string }
 func (h *CardsHandler) AddCard(c *gin.Context) {
-	var req any
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	var body struct {
+		AccountID string `json:"account_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	resp, err := h.Client.GenericPost("/api/v1/cards", req)
+	url, err := h.cardService.AddCard(c, body.AccountID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "add card failed", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", resp)
+	c.JSON(http.StatusOK, gin.H{"redirect_url": url})
 }
 
-// GET /cards/:accountId — получить сохраненные карты клиента
+// GET /cards/:accountId
 func (h *CardsHandler) ListCards(c *gin.Context) {
 	accountId := c.Param("accountId")
-	resp, err := h.Client.GenericGet("/api/v1/cards/" + accountId)
+	cards, err := h.cardService.GetCards(c, accountId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "get cards failed", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", resp)
+	c.JSON(http.StatusOK, cards)
 }
 
-// DELETE /cards/:id — удалить карту
+// DELETE /cards/:id
 func (h *CardsHandler) DeleteCard(c *gin.Context) {
 	cardId := c.Param("id")
-	err := h.Client.GenericDelete("/api/v1/cards/" + cardId)
+	err := h.cardService.DeleteCard(c, cardId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete card failed", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// POST /refund { payment_id: string, amount: float64 }
+func (h *CardsHandler) Refund(c *gin.Context) {
+	var body struct {
+		PaymentID string  `json:"payment_id"`
+		Amount    float64 `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	err := h.refundService.Refund(c, body.PaymentID, body.Amount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.Status(http.StatusOK)

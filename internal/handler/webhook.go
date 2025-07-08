@@ -1,163 +1,160 @@
 package handler
 
 import (
-	"billing-service/internal/model"
+	"billing-service/internal/service"
+	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
-	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"billing-service/internal/service"
 )
 
+// Payload для платежного вебхука
+type AirbaWebhookPayload struct {
+	ID          string  `json:"id"`
+	InvoiceID   string  `json:"invoice_id"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	Status      string  `json:"status"`
+	Description string  `json:"description"`
+	Signature   string  `json:"signature"`
+}
+
+// Payload для вебхука карты
+type AirbaCardWebhookPayload struct {
+	ID        string `json:"id"`
+	AccountID string `json:"account_id"`
+	MaskedPan string `json:"masked_pan"`
+	Name      string `json:"name"`
+	Expire    string `json:"expire"`
+	Signature string `json:"signature"`
+}
+
 type WebhookHandler struct {
-	Service *service.Services
-	PubKey  *rsa.PublicKey
+	PaymentService *service.PaymentService
+	PublicKeyURL   string
 }
 
-
-type WebhookPaymentPayload struct {
-	ID          string `json:"id"`
-	InvoiceID   string `json:"invoice_id"`
-	Amount      int    `json:"amount"`
-	Currency    string `json:"currency"`
-	Status      string `json:"status"`
-	Description string `json:"description"`
-	Signature   string `json:"signature"`
-}
-
-func NewWebhookHandler(s *service.Services) (*WebhookHandler, error) {
-	pubKey, err := loadPublicKeyFromURL("https://sps.airbapay.kz/acquiring/sign/public.pem")
-	if err != nil {
-		return nil, err
-	}
-
+func NewWebhookHandler(paymentService *service.PaymentService) *WebhookHandler {
 	return &WebhookHandler{
-		Service: s,
-		PubKey:  pubKey,
-	}, nil
+		PaymentService: paymentService,
+		PublicKeyURL:   "https://sps.airbapay.kz/acquiring/sign/public.pem",
+	}
 }
 
+// POST /webhook/payment
 func (h *WebhookHandler) HandlePaymentWebhook(c *gin.Context) {
-	var payload WebhookPaymentPayload
+	var payload AirbaWebhookPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
 
-	body, err := io.ReadAll(c.Request.Body)
+	ok, err := h.verifySignature(payload)
+	if err != nil || !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+		return
+	}
+
+	err = h.PaymentService.UpdatePaymentStatus(
+		c.Request.Context(),
+		payload.InvoiceID,
+		payload.Status,
+	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
-		return
-	}
-
-	if err := json.Unmarshal(body, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return
-	}
-
-	message := payload.ID + payload.InvoiceID + toStr(payload.Amount) + payload.Currency + payload.Status + payload.Description
-	if err := verifySignature(h.PubKey, message, payload.Signature); err != nil {
-		log.Println("Signature verification failed:", err)
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid signature"})
-		return
-	}
-
-	err = h.Service.UpdatePaymentStatus(c.Request.Context(), payload.InvoiceID, payload.Status)
-	if err != nil {
-		log.Println("DB update error:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update status"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update payment"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func toStr(i int) string {
-	return fmt.Sprintf("%d", i)
-}
-
-func verifySignature(pubKey *rsa.PublicKey, message, signature string) error {
-	sigBytes, err := base64.StdEncoding.DecodeString(signature)
-	if err != nil {
-		return err
+// POST /webhook/card
+func (h *WebhookHandler) HandleCardWebhook(c *gin.Context) {
+	var payload AirbaCardWebhookPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid card payload"})
+		return
 	}
 
-	hashed := sha256.Sum256([]byte(message))
-	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashed[:], sigBytes)
+	ok, err := h.verifyCardSignature(payload)
+	if err != nil || !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid card signature"})
+		return
+	}
+
+	// Симулируем сохранение карты
+	log.Printf("✅ Received card for user %s: %s (%s)", payload.AccountID, payload.MaskedPan, payload.Expire)
+	c.JSON(http.StatusOK, gin.H{"status": "card saved (simulated)"})
 }
 
-func loadPublicKeyFromURL(url string) (*rsa.PublicKey, error) {
-	resp, err := http.Get(url)
+// Подпись платежа: id+invoice_id+amount+currency+status+description
+func (h *WebhookHandler) verifySignature(p AirbaWebhookPayload) (bool, error) {
+	pubKey, err := h.loadPublicKey()
+	if err != nil {
+		return false, err
+	}
+	message := fmt.Sprintf("%s%s%.2f%s%s%s",
+		p.ID, p.InvoiceID, p.Amount, p.Currency, p.Status, p.Description)
+
+	return h.verifyWithPublicKey(pubKey, message, p.Signature)
+}
+
+// Подпись карты: id+account_id+masked_pan+name+expire
+func (h *WebhookHandler) verifyCardSignature(p AirbaCardWebhookPayload) (bool, error) {
+	pubKey, err := h.loadPublicKey()
+	if err != nil {
+		return false, err
+	}
+	message := fmt.Sprintf("%s%s%s%s%s", p.ID, p.AccountID, p.MaskedPan, p.Name, p.Expire)
+
+	return h.verifyWithPublicKey(pubKey, message, p.Signature)
+}
+
+// Получает RSA-публичный ключ
+func (h *WebhookHandler) loadPublicKey() (*rsa.PublicKey, error) {
+	resp, err := http.Get(h.PublicKeyURL)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	block, _ := pem.Decode(io.ReadAll(resp.Body))
-	if block == nil || block.Type != "PUBLIC KEY" {
-		return nil, errors.New("invalid PEM format")
-	}
-
-	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	pemBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	rsaPub, ok := pubKey.(*rsa.PublicKey)
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, fmt.Errorf("invalid PEM block")
+	}
+
+	parsedKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	rsaPubKey, ok := parsedKey.(*rsa.PublicKey)
 	if !ok {
-		return nil, errors.New("not an RSA key")
+		return nil, fmt.Errorf("not an RSA public key")
 	}
-
-	return rsaPub, nil
-}
-type WebhookCardPayload struct {
-	AccountID string `json:"account_id"`
-	CardID    string `json:"card_id"`
-	Status    string `json:"status"`
-	Signature string `json:"signature"`
+	return rsaPubKey, nil
 }
 
-func (h *WebhookHandler) HandleSaveCardWebhook(c *gin.Context) {
-	var payload WebhookCardPayload
-
-	body, err := io.ReadAll(c.Request.Body)
+// Проверка подписи
+func (h *WebhookHandler) verifyWithPublicKey(pubKey *rsa.PublicKey, message, base64Sig string) (bool, error) {
+	sigBytes, err := base64.StdEncoding.DecodeString(base64Sig)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
-		return
+		return false, err
 	}
-
-	if err := json.Unmarshal(body, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return
-	}
-
-	message := payload.AccountID + payload.CardID + payload.Status
-	if err := verifySignature(h.PubKey, message, payload.Signature); err != nil {
-		log.Println("Card signature verification failed:", err)
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid signature"})
-		return
-	}
-
-	// ✅ Сохраняем карту в базу данных
-	card := model.SavedCard{
-		AccountID: payload.AccountID,
-		CardID:    payload.CardID,
-		Status:    payload.Status,
-	}
-
-	err = h.Service.Card.SaveCard(c.Request.Context(), card)
-	if err != nil {
-		log.Println("Failed to save card:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save card"})
-		return
-	}
-
-	log.Printf("Card saved for AccountID: %s, CardID: %s, Status: %s\n", payload.AccountID, payload.CardID, payload.Status)
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	hash := sha256.Sum256([]byte(message))
+	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hash[:], sigBytes)
+	return err == nil, nil
 }

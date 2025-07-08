@@ -2,10 +2,9 @@ package service
 
 import (
 	"billing-service/internal/airba"
-	"fmt"
-	"net/http"
-	"context"
 	"billing-service/internal/model"
+	"context"
+	"fmt"
 )
 
 type CardService struct {
@@ -16,37 +15,27 @@ func NewCardService(client *airba.Client) *CardService {
 	return &CardService{client: client}
 }
 
-func (s *CardService) AddCard(accountID string) (string, error) {
-	endpoint := fmt.Sprintf("/cards/")
-	body := map[string]string{
-		"account_id": accountID,
+// 1. Запросить redirect_url для добавления карты
+func (s *CardService) AddCard(ctx context.Context, accountId string) (string, error) {
+	req := model.SaveCardRequest{
+		AccountID: accountId,
 	}
-	var response struct {
-		RedirectURL string `json:"redirect_url"`
-	}
-	err := s.client.Send(http.MethodPost, endpoint, body, &response)
+	var resp model.SaveCardResponse
+	err := s.client.Send("POST", "/api/v2/cards", req, &resp)
 	if err != nil {
 		return "", err
 	}
-	return response.RedirectURL, nil
+	return resp.RedirectURL, nil
 }
 
-func (s *CardService) GetCards(accountID string) ([]map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("/cards/%s", accountID)
-	var response []map[string]interface{}
-	err := s.client.Send(http.MethodGet, endpoint, nil, &response)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+// 2. Получить список сохранённых карт
+func (s *CardService) GetCards(ctx context.Context, accountId string) ([]model.CardInfo, error) {
+	var cards []model.CardInfo
+	err := s.client.Send("GET", fmt.Sprintf("/api/v2/cards/%s", accountId), nil, &cards)
+	return cards, err
 }
 
-func (s *CardService) DeleteCard(cardID string) error {
-	endpoint := fmt.Sprintf("/cards/%s", cardID)
-	return s.client.Send(http.MethodDelete, endpoint, nil, nil)
+// 3. Удалить карту по ID
+func (s *CardService) DeleteCard(ctx context.Context, cardID string) error {
+	return s.client.Send("DELETE", fmt.Sprintf("/api/v2/cards/%s", cardID), nil, nil)
 }
-
-func (s *CardService) SaveCard(ctx context.Context, card model.SavedCard) error {
-	return s.repo.SaveCardWebhook(ctx, card)
-}
-

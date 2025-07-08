@@ -1,45 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Billing API Docs</title>
+  <title>Billing Service UI</title>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 30px auto;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 6px;
+      margin-top: 4px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-weight: bold;
+    }
+    pre {
+      background: #eee;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+  </style>
 </head>
 <body>
-  <h1>Billing API — Sandbox</h1>
-  <p><strong>Base URL:</strong> http://localhost:8080</p>
+  <h1>Billing Service UI</h1>
 
-  <h2>Authentication</h2>
-  <p>Use HTTP header: <code>X-Api-Key: sandbox_123</code></p>
+  <h2>Create Invoice</h2>
+  <form id="invoiceForm">
+    <label>Role:
+      <select name="role">
+        <option value="student">student</option>
+        <option value="parent">parent</option>
+      </select>
+    </label>
+    <label>User ID: <input type="text" name="user_id" required /></label>
+    <label>Amount: <input type="number" name="amount" step="0.01" required /></label>
+    <label>Quantity: <input type="number" name="quantity" required /></label>
+    <button type="submit">Create Invoice</button>
+  </form>
 
-  <h2>Endpoints</h2>
-  <ul>
-    <li><strong>POST /roles</strong> — Register user with role</li>
-    <li><strong>POST /invoice</strong> — Create invoice</li>
-    <li><strong>POST /payment</strong> — Register payment</li>
-    <li><strong>GET /payments</strong> — All payments</li>
-    <li><strong>GET /payments/:id/:role</strong> — Payments for user</li>
-    <li><strong>POST /airba/auth</strong> — Get AirbaPay JWT token</li>
-    <li><strong>POST /airba/payment</strong> — Create payment session</li>
-    <li><strong>POST /airba/payment/card</strong> — Create payment with saved card</li>
-    <li><strong>POST /airba/charge</strong> — Confirm two-stage payment</li>
-    <li><strong>POST /airba/return</strong> — Refund payment</li>
-    <li><strong>GET /airba/status/:id</strong> — Payment status</li>
-    <li><strong>POST /airba/cards</strong> — Save card</li>
-    <li><strong>GET /airba/cards/:accountId</strong> — List saved cards</li>
-    <li><strong>DELETE /airba/cards/:id</strong> — Delete saved card</li>
-  </ul>
+  <h2>Get Payment History</h2>
+  <label>Role:
+    <select id="historyRole">
+      <option value="student">student</option>
+      <option value="parent">parent</option>
+    </select>
+  </label>
+  <label>User ID: <input id="historyUserID" type="text" required /></label>
+  <button onclick="getHistory()">Get History</button>
+  <pre id="historyOutput"></pre>
 
-  <h2>Example (Curl)</h2>
-  <pre>
-curl -X POST http://localhost:8080/payment \
-  -H "Content-Type: application/json" \
-  -H "X-Api-Key: sandbox_123" \
-  -d '{
-    "id": "user_1",
-    "role": "parent",
-    "amount": 1500,
-    "quantity": 1
-  }'
-  </pre>
+  <script>
+    document.getElementById("invoiceForm").onsubmit = async function (e) {
+      e.preventDefault();
+      const form = e.target;
+      const payload = {
+        role: form.role.value,
+        user_id: form.user_id.value,
+        amount: parseFloat(form.amount.value),
+        quantity: parseInt(form.quantity.value)
+      };
+
+      const res = await fetch("/invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": "sandbox_123"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const text = await res.text();
+      alert(`Response: ${text}`);
+    };
+
+    async function getHistory() {
+      const role = document.getElementById("historyRole").value;
+      const userID = document.getElementById("historyUserID").value;
+
+      const res = await fetch(`/payments?role=${role}&user_id=${userID}`, {
+        headers: { "X-Api-Key": "sandbox_123" }
+      });
+
+      const data = await res.json();
+      document.getElementById("historyOutput").textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
 </body>
 </html>

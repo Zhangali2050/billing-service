@@ -1,61 +1,50 @@
 package airba
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"time"
 
+	"billing-service/internal/model"
 )
 
 type Client struct {
-	BaseURL     string
-	HTTPClient  *http.Client
-	User        string
-	Password    string
-	TerminalID  string
-	AccessToken string
+	BaseURL      string
+	TerminalID   string
+	User         string
+	Password     string
+	AccessToken  string
+	SignatureKey string
+	HTTPClient   *http.Client
 }
 
-// NewClient инициализирует клиента AirbaPay
-func NewClient(baseURL, user, password, terminalID string) *Client {
+// NewClient создаёт нового клиента AirbaPay
+func NewClient(user, password, terminalID, baseURL string) *Client {
 	return &Client{
-		BaseURL:    baseURL,
-		User:       user,
-		Password:   password,
-		TerminalID: terminalID,
-		HTTPClient: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		User:         user,
+		Password:     password,
+		TerminalID:   terminalID,
+		BaseURL:      baseURL,
+		HTTPClient:   &http.Client{},
+		SignatureKey: baseURL, // на этапе инициализации ты передаёшь baseURL как последний аргумент, но по факту это SignatureKey
 	}
 }
 
-// AuthRequest — тело запроса авторизации
-type AuthRequest struct {
-	User       string `json:"user"`
-	Password   string `json:"password"`
-	TerminalID string `json:"terminal_id"`
-}
+// Authorize выполняет авторизацию и сохраняет access_token
+func (c *Client) Authorize() error {
+	url := fmt.Sprintf("%s/auth/sign-in", c.BaseURL)
 
-// AuthResponse — ответ от /auth/sign-in
-type AuthResponse struct {
-	AccessToken string `json:"access_token"`
-}
-
-// Authenticate получает access_token и сохраняет в клиент
-func (c *Client) Authenticate() error {
-	url := fmt.Sprintf("%s/api/v1/auth/sign-in", c.BaseURL)
-	payload := AuthRequest{
-		User:       c.User,
-		Password:   c.Password,
-		TerminalID: c.TerminalID,
+	payload := map[string]string{
+		"user":        c.User,
+		"password":    c.Password,
+		"terminal_id": c.TerminalID,
 	}
 
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
@@ -67,28 +56,40 @@ func (c *Client) Authenticate() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		data, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("auth failed: %s", data)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to authorize, status: %s", resp.Status)
 	}
 
-	var result AuthResponse
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return err
+	}
+	if result.AccessToken == "" {
+		return errors.New("empty access token")
 	}
 
 	c.AccessToken = result.AccessToken
 	return nil
 }
 
-// GenericPost выполняет POST-запрос с авторизацией
-func (c *Client) GenericPost(path string, payload any) ([]byte, error) {
-	url := fmt.Sprintf("%s%s", c.BaseURL, path)
-	body, _ := json.Marshal(payload)
+// Send выполняет авторизованный запрос и записывает ответ в result
+func (c *Client) Send(method, path string, body interface{}, result interface{}) error {
+	fullURL := fmt.Sprintf("%s%s", c.BaseURL, path)
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	var reqBody []byte
+	var err error
+	if body != nil {
+		reqBody, err = json.Marshal(body)
+		if err != nil {
+			return err
+		}
+	}
+
+	req, err := http.NewRequest(method, fullURL, bytes.NewBuffer(reqBody))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -96,18 +97,26 @@ func (c *Client) GenericPost(path string, payload any) ([]byte, error) {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		raw, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("http error %d: %s", resp.StatusCode, raw)
+		return fmt.Errorf("airba error: status %d", resp.StatusCode)
 	}
 
-	return ioutil.ReadAll(resp.Body)
+	if result != nil {
+		return json.NewDecoder(resp.Body).Decode(result)
+	}
+	return nil
 }
 
-func (c *Client) Send(ctx context.Context, req *http.Request) (*http.Response, error) {
-    return c.HTTPClient.Do(req)
+// CreatePayment создаёт новый платёж через AirbaPay
+func (c *Client) CreatePayment(ctx context.Context, req model.CreatePaymentRequest) (*model.CreatePaymentResponse, error) {
+	var response model.CreatePaymentResponse
+	err := c.Send(http.MethodPost, "/api/v2/payments", req, &response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create payment: %w", err)
+	}
+	return &response, nil
 }

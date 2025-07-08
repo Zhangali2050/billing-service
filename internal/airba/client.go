@@ -1,12 +1,14 @@
 package airba
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
+
 )
 
 type Client struct {
@@ -104,4 +106,8 @@ func (c *Client) GenericPost(path string, payload any) ([]byte, error) {
 	}
 
 	return ioutil.ReadAll(resp.Body)
+}
+
+func (c *Client) Send(ctx context.Context, req *http.Request) (*http.Response, error) {
+    return c.HTTPClient.Do(req)
 }

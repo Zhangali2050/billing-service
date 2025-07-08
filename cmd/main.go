@@ -1,74 +1,56 @@
 package main
 
 import (
+	"billing-service/internal/airba"
+	"billing-service/internal/config"
 	"billing-service/internal/handler"
+	"billing-service/internal/model" // если структура Repository лежит тут
 	"billing-service/internal/repository"
 	"billing-service/internal/service"
-	"context"
-	"fmt"
-	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq"
 	"log"
 	"net/http"
-	"os"
-	"time"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	// Получаем строку подключения из переменных окружения
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Fatal("DATABASE_URL is not set")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Подключаемся к PostgreSQL
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	db, err := pgxpool.Connect(ctx, dsn)
+	db, err := repository.NewPostgres(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		log.Fatalf("failed to connect to DB: %v", err)
 	}
 	defer db.Close()
 
-	// Проверка соединения
-	if err := db.Ping(ctx); err != nil {
-		log.Fatalf("failed to ping db: %v", err)
+	// 🔧 Создаём Airba-клиент
+	airbaClient := airba.NewClient(cfg.AirbaAPIKey, cfg.AirbaBaseURL)
+
+	// 🔧 Репозиторий
+	repo := &model.Repository{DB: db}
+
+	// 🔧 Создаём сервис статуса платежа
+	paymentStatusService := service.NewPaymentStatusService(airbaClient, repo)
+
+	// 🔧 Основной сервис платежей
+	paymentService := service.NewPaymentService(repo)
+
+	// 🔧 Webhook handler
+	webhookHandler, err := handler.NewWebhookHandler(paymentService)
+	if err != nil {
+		log.Fatalf("failed to create webhook handler: %v", err)
 	}
 
-	// Инициализируем репозиторий и сервисы
-	repo := repository.NewRepository(db)
-	apiService := service.NewAirbaPayService()
-
-	// Создаём роутер Gin
 	router := gin.Default()
 
-	// Статический маршрут для index.html
-	router.StaticFile("/docs", "./static/index.html")
+	// 🔧 Настроить маршруты
+	handler.SetupRoutes(router, repo, airbaClient, webhookHandler, paymentStatusService)
 
-	// Авторизация API-ключом для всех защищённых маршрутов
-	protected := router.Group("/", func(c *gin.Context) {
-		key := c.GetHeader("X-Api-Key")
-		if key != "sandbox_123" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			c.Abort()
-			return
-		}
-		c.Next()
-	})
 
-	// Регистрация маршрутов
-	handler.SetupRoutes(protected, repo, apiService)
-
-	// Запуск сервера
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	log.Printf("🚀 Server running on http://localhost:%s/", port)
-	err = http.ListenAndServe(":"+port, router)
-	if err != nil {
+	log.Println("📦 Server is running on :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
 }

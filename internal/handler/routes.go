@@ -3,16 +3,18 @@ package handler
 import (
 	"billing-service/internal/airba"
 	"billing-service/internal/repository"
-	"billing-service/internal/handler"
-	"billing-service/internal/service"
-	"crypto/rsa"
-	"log"
-	"os"
+
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes инициализирует все маршруты
-func SetupRoutes(r *gin.Engine, repo *repository.Repository, airbaClient *airba.Client) {
+func SetupRoutes(
+	r *gin.Engine,
+	repo *repository.Repository,
+	airbaClient *airba.Client,
+	webhookHandler *WebhookHandler, // <-- теперь передаём извне
+	paymentStatusService *service.PaymentStatusService,
+) {
 	// Middleware авторизации по X-Api-Key
 	r.Use(apiKeyMiddleware())
 
@@ -29,15 +31,26 @@ func SetupRoutes(r *gin.Engine, repo *repository.Repository, airbaClient *airba.
 	r.POST("/airba/cards", paymentHandler.AddCard)
 	r.GET("/airba/cards/:accountId", paymentHandler.GetCards)
 	r.DELETE("/airba/cards/:id", paymentHandler.DeleteCard)
-	r.POST("/airba/webhook", paymentHandler.Webhook)
+
+	// Webhooks
+	r.POST("/webhook/payment", webhookHandler.HandlePaymentWebhook)
+	r.POST("/webhook/save-card", webhookHandler.HandleSaveCardWebhook)
 
 	// Карты (отдельный handler)
 	cardsHandler := NewCardsHandler(airbaClient)
 	r.POST("/cards", cardsHandler.AddCard)
 	r.GET("/cards/:accountId", cardsHandler.ListCards)
 	r.DELETE("/cards/:id", cardsHandler.DeleteCard)
-	r.POST("/webhook/payment", webhookHandler.HandlePaymentWebhook)
-	r.POST("/webhook/save-card", webhookHandler.HandleSaveCardWebhook)
+
+	r.GET("/status/:invoiceId", func(c *gin.Context) {
+		invoiceID := c.Param("invoiceId")
+		status, err := paymentStatusService.GetPaymentStatus(invoiceID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, status)
+	})
 
 }
 
@@ -111,25 +124,4 @@ func apiKeyMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
-	// Загружаем публичный ключ для проверки подписи webhook
-	pubKeyPath := "./airba_public_key.pem"
-	pubKeyBytes, err := os.ReadFile(pubKeyPath)
-	if err != nil {
-		log.Fatalf("не удалось прочитать публичный ключ: %v", err)
-	}
-
-	publicKey, err := handler.ParseRSAPublicKey(pubKeyBytes)
-	if err != nil {
-		log.Fatalf("не удалось распарсить публичный ключ: %v", err)
-	}
-
-	if webhookHandler, err := handler.NewWebhookHandler(paymentService); err == nil {
-		r.POST("/webhook/payment", webhookHandler.HandlePaymentWebhook)
-	} else {
-		log.Fatalf("failed to load webhook handler: %v", err)
-	}
-
-	r.POST("/webhook/save-card", webhookHandler.HandleSaveCardWebhook)
-
-
 }

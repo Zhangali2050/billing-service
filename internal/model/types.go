@@ -1,4 +1,6 @@
 package model
+import "time"
+
 
 type Role struct {
 	ID   string `json:"id"`
@@ -71,4 +73,32 @@ type SavedCard struct {
 	CardID    string    `json:"card_id"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+
+type SavedPaymentRequest struct {
+    AccountID string `json:"account_id"`
+    CardID    string `json:"card_id"`
+    Status    string `json:"status"`
+}
+
+type SavedPaymentResponse struct {
+    Success bool `json:"success"`
+}
+
+type RefundRequest struct {
+    PaymentID string  `json:"payment_id"`
+    Amount    float64 `json:"amount"`
+    Reason    string  `json:"reason"`
+}
+
+type RefundResponse struct {
+    Success   bool   `json:"success"`
+    RefundID  string `json:"refund_id,omitempty"`
+    ErrorText string `json:"error,omitempty"`
+}
+
+type PaymentStatusResponse struct {
+    PaymentID string `json:"payment_id"`
+    Status    string `json:"status"`
 }

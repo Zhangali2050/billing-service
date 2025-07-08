@@ -7,7 +7,7 @@ WORKDIR /app
 # Копируем зависимости
 COPY go.mod ./
 COPY go.sum ./
-RUN go mod download
+# RUN go mod download
 
 # Копируем всё остальное
 COPY . ./

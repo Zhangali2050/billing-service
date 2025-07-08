@@ -4,6 +4,8 @@ import (
 	"billing-service/internal/airba"
 	"fmt"
 	"net/http"
+	"context"
+	"billing-service/internal/model"
 )
 
 type CardService struct {

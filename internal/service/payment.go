@@ -6,7 +6,7 @@ import (
 	"billing-service/internal/repository"
 	"context"
 	"time"
-
+	"strconv"
 	"github.com/google/uuid"
 )
 
@@ -24,7 +24,7 @@ func NewPaymentService(repo *repository.Repository, client *airba.Client) *Payme
 
 type CreatePaymentInput struct {
 	Role     string    `json:"role"`
-	UserID   uuid.UUID `json:"user_id"`
+	UserID   int64     `json:"user_id"`
 	Amount   float64   `json:"amount"`
 	Quantity int       `json:"quantity"`
 }
@@ -34,7 +34,7 @@ func (s *PaymentService) CreateAndSavePayment(ctx context.Context, input CreateP
 	invoiceID := uuid.New().String()
 
 	req := model.CreatePaymentRequest{
-		ID:          input.UserID.String(),
+		ID:          strconv.FormatInt(input.UserID, 10),
 		Role:        model.Role(input.Role),
 		Amount:      input.Amount,
 		Quantity:    input.Quantity,
@@ -77,7 +77,7 @@ func (s *PaymentService) insertPayment(ctx context.Context, req model.CreatePaym
 // Метод для сохранения платежа без интеграции с AirbaPay (например, для тестов)
 func (s *PaymentService) CreatePayment(ctx context.Context, input CreatePaymentInput) error {
 	return s.insertPayment(ctx, model.CreatePaymentRequest{
-		ID:        input.UserID.String(),
+		ID:        strconv.FormatInt(input.UserID, 10),
 		Role:      model.Role(input.Role),
 		Amount:    input.Amount,
 		Quantity:  input.Quantity,
@@ -86,7 +86,7 @@ func (s *PaymentService) CreatePayment(ctx context.Context, input CreatePaymentI
 }
 
 type PaymentRecord struct {
-	ID        uuid.UUID `json:"id"`
+	ID        int64     `json:"id"`
 	InvoiceID string    `json:"invoice_id"`
 	Amount    float64   `json:"amount"`
 	Quantity  int       `json:"quantity"`
@@ -95,7 +95,7 @@ type PaymentRecord struct {
 }
 
 // Получает историю платежей по user_id и роли
-func (s *PaymentService) GetPayments(ctx context.Context, userID uuid.UUID, role string) ([]PaymentRecord, error) {
+func (s *PaymentService) GetPayments(ctx context.Context, userID int64, role string) ([]PaymentRecord, error) {
 	query := `
 		SELECT id, invoice_id, amount, quantity, status, created_at
 		FROM payments

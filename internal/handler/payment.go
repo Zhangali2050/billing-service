@@ -3,7 +3,7 @@ package handler
 import (
 	"billing-service/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"fmt"
 	"net/http"
 )
 
@@ -17,7 +17,7 @@ func NewPaymentHandler(paymentService *service.PaymentService) *PaymentHandler {
 
 type CreateInvoiceRequest struct {
 	Role     string  `json:"role" binding:"required"`
-	UserID   string  `json:"user_id" binding:"required"`
+	UserID   int64   `json:"user_id" binding:"required"`  // теперь число
 	Amount   float64 `json:"amount" binding:"required"`
 	Quantity int     `json:"quantity" binding:"required"`
 }
@@ -29,21 +29,16 @@ func (h *PaymentHandler) CreateInvoice(c *gin.Context) {
 		return
 	}
 
-	userUUID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
-		return
-	}
-
 	input := service.CreatePaymentInput{
 		Role:     req.Role,
-		UserID:   userUUID,
+		UserID:   req.UserID, // ✅ используем напрямую
 		Amount:   req.Amount,
 		Quantity: req.Quantity,
 	}
 
-	err = h.paymentService.CreatePayment(c.Request.Context(), input)
+	err := h.paymentService.CreatePayment(c.Request.Context(), input)
 	if err != nil {
+		fmt.Println("CreatePayment error:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create invoice"})
 		return
 	}
@@ -55,7 +50,7 @@ func (h *PaymentHandler) CreateInvoice(c *gin.Context) {
 
 type PaymentHistoryRequest struct {
 	Role   string `form:"role" binding:"required"`
-	UserID string `form:"user_id" binding:"required"`
+	UserID int64  `form:"user_id" binding:"required"` // ✅ тоже заменяем здесь
 }
 
 func (h *PaymentHandler) GetPaymentHistory(c *gin.Context) {
@@ -65,13 +60,9 @@ func (h *PaymentHandler) GetPaymentHistory(c *gin.Context) {
 		return
 	}
 
-	userUUID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
-		return
-	}
+	// ❌ больше не нужно uuid.Parse
 
-	payments, err := h.paymentService.GetPayments(c.Request.Context(), userUUID, req.Role)
+	payments, err := h.paymentService.GetPayments(c.Request.Context(), req.UserID, req.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get payments"})
 		return

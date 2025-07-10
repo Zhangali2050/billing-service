@@ -31,22 +31,21 @@ func (h *PaymentHandler) CreateInvoice(c *gin.Context) {
 
 	input := service.CreatePaymentInput{
 		Role:     req.Role,
-		UserID:   req.UserID, // ✅ используем напрямую
+		UserID:   req.UserID,
 		Amount:   req.Amount,
 		Quantity: req.Quantity,
 	}
 
-	err := h.paymentService.CreatePayment(c.Request.Context(), input)
+	resp, err := h.paymentService.CreateAndSavePayment(c.Request.Context(), input)
 	if err != nil {
-		fmt.Println("CreatePayment error:", err)
+		fmt.Println("CreateAndSavePayment error:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create invoice"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"status": "invoice created",
-	})
+	c.JSON(http.StatusCreated, resp)
 }
+
 
 type PaymentHistoryRequest struct {
 	Role   string `form:"role" binding:"required"`

@@ -30,8 +30,11 @@ func main() {
 		cfg.Airba.User,
 		cfg.Airba.Password,
 		cfg.Airba.TerminalID,
-		cfg.Airba.SignatureKey, // добавлен 4-й аргумент
+		cfg.Airba.BaseURL,
+		cfg.Airba.SignatureKey,
+
 	)
+
 
 	paymentService := service.NewPaymentService(repo, airbaClient)
 	webhookHandler := handler.NewWebhookHandler(paymentService)

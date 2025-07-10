@@ -34,7 +34,7 @@ type AirbaCardWebhookPayload struct {
 	MaskedPan string `json:"masked_pan"`
 	Name      string `json:"name"`
 	Expire    string `json:"expire"`
-	Signature string `json:"signature"`
+	Signature string `json:"sign"`
 }
 
 type WebhookHandler struct {

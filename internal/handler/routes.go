@@ -39,8 +39,7 @@ func SetupRoutes(
 	r.POST("/webhook/payment", webhookHandler.HandlePaymentWebhook)
 	r.POST("/webhook/card", webhookHandler.HandleCardWebhook)
 
-	// Статичный HTML для теста (браузерный UI)
-	r.StaticFile("/", "./static/index.html")
+
 }
 
 // // Простая проверка API-ключа

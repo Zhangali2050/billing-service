@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-
+	"log"
 	"billing-service/internal/model"
 )
 
@@ -22,21 +22,22 @@ type Client struct {
 }
 
 // NewClient создаёт нового клиента AirbaPay
-func NewClient(user, password, terminalID, baseURL string) *Client {
-	return &Client{
-		User:         user,
-		Password:     password,
-		TerminalID:   terminalID,
-		BaseURL:      baseURL,
-		HTTPClient:   &http.Client{},
-		SignatureKey: baseURL, // на этапе инициализации ты передаёшь baseURL как последний аргумент, но по факту это SignatureKey
-	}
+func NewClient(user, password, terminalID, baseURL, signatureKey string) *Client {
+    return &Client{
+        User:         user,
+        Password:     password,
+        TerminalID:   terminalID,
+        BaseURL:      baseURL,
+        HTTPClient:   &http.Client{},
+        SignatureKey: signatureKey,
+    }
 }
+
 
 // Authorize выполняет авторизацию и сохраняет access_token
 func (c *Client) Authorize() error {
 	url := fmt.Sprintf("%s/auth/sign-in", c.BaseURL)
-
+	log.Println(url)
 	payload := map[string]string{
 		"user":        c.User,
 		"password":    c.Password,

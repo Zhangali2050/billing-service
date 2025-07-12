@@ -1,5 +1,5 @@
 package model
-
+import "time"
 
 
 // Запрос на создание платежа (внутренний)
@@ -29,4 +29,10 @@ type PaymentStatusResponse struct {
 	Currency    string `json:"currency"`
 	Status      string `json:"status"`
 	Description string `json:"description"`
+}
+
+type AccessResponse struct {
+	Count  int       `json:"count"`
+	Amount float64   `json:"amount"`
+	Until  time.Time `json:"until"`
 }

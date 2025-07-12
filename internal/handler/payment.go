@@ -5,7 +5,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"fmt"
 	"net/http"
+	"time"
 )
+
+
 
 type PaymentHandler struct {
 	paymentService *service.PaymentService
@@ -68,4 +71,91 @@ func (h *PaymentHandler) GetPaymentHistory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, payments)
+}
+
+type GrantAccessRequest struct {
+	UserID   int64     `json:"user_id" binding:"required"`
+	Role string    `json:"user_role" binding:"required"`
+	Amount   float64   `json:"amount" binding:"required"`
+	Count    int       `json:"count" binding:"required"`
+	Until    time.Time `json:"until" binding:"required"`
+}
+
+type AccessQueryRequest struct {
+	UserID int64  `form:"user_id" binding:"required"`
+	Role   string `form:"role" binding:"required"` // было UserRole
+}
+
+type CreateInvoiceDetailedRequest struct {
+	UserID      int64     `json:"user_id" binding:"required"`
+	UserRole    string    `json:"user_role" binding:"required"`
+	Amount      float64   `json:"amount" binding:"required"`
+	Count       int       `json:"count" binding:"required"`
+	Until       time.Time `json:"until" binding:"required"`
+	OverallPrice float64  `json:"overallprice" binding:"required"`
+}
+
+
+type AccessHandler struct {
+	service *service.PaymentService
+}
+
+func NewAccessHandler(s *service.PaymentService) *AccessHandler {
+	return &AccessHandler{service: s}
+}
+
+func (h *AccessHandler) GrantAccess(c *gin.Context) {
+	var req GrantAccessRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.GrantAccess(c.Request.Context(), service.AccessData{
+		UserID: req.UserID,
+		Role:   req.Role,
+		Amount: req.Amount,
+		Count:  req.Count,
+		Until:  req.Until,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to grant access"})
+		return
+	}
+
+
+
+
+	c.JSON(http.StatusOK, gin.H{"status": "access granted"})
+}
+
+func (h *AccessHandler) GetAccess(c *gin.Context) {
+	var query AccessQueryRequest
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.service.GetAccess(c.Request.Context(), query.UserID, query.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get access info"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+
+func (h *PaymentHandler) CreateInvoiceDetailed(c *gin.Context) {
+	var req CreateInvoiceDetailedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Здесь ты можешь сохранить данные как нужно. Например, просто лог:
+	fmt.Printf("Создание инвойса: %+v\n", req)
+
+	// Или сохранить в таблицу `payments`, если хочешь — скажи, добавим сохранение.
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

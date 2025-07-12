@@ -7,5 +7,8 @@ CREATE TABLE IF NOT EXISTS payments (
     amount NUMERIC NOT NULL,                     -- Сумма
     quantity INTEGER NOT NULL,                   -- Кол-во товаров
     status TEXT NOT NULL,                        -- Статус (например, "success", "failed")
-    created_at TIMESTAMP DEFAULT NOW()           -- Дата создания
+    created_at TIMESTAMP DEFAULT NOW()          -- Дата создания
 );
+
+-- Добавление колонки until отдельно
+ALTER TABLE payments ADD COLUMN until TIMESTAMP

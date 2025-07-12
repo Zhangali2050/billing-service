@@ -6,9 +6,13 @@ import (
 	"billing-service/internal/repository"
 	"context"
 	"time"
+	"fmt"
 	"strconv"
 	"github.com/google/uuid"
+	"database/sql"
+	"errors"
 )
+
 
 type PaymentService struct {
 	repo   *repository.Repository
@@ -124,4 +128,109 @@ func (s *PaymentService) UpdatePaymentStatus(ctx context.Context, invoiceID stri
 	query := `UPDATE payments SET status = $1 WHERE invoice_id = $2`
 	_, err := s.repo.DB.Exec(ctx, query, status, invoiceID)
 	return err
+}
+
+
+type AccessData struct {
+	UserID int64
+	Role   string
+	Amount float64
+	Count  int
+	Until  time.Time
+}
+
+// Вставка доступа в таблицу payments
+func (s *PaymentService) GrantAccess(ctx context.Context, data AccessData) error {
+	query := `
+		INSERT INTO payments (user_id, role, invoice_id, amount, quantity, status, created_at, until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`
+
+	_, err := s.repo.DB.Exec(ctx, query,
+		data.UserID,
+		data.Role,
+		fmt.Sprintf("granted_%d", time.Now().UnixNano()), // invoice_id dummy
+		data.Amount,
+		data.Count,
+		"granted",
+		time.Now(),
+		data.Until,
+	)
+
+	if err != nil {
+		fmt.Println("❌ INSERT error:", err)
+	}
+
+
+	return err
+}
+
+// Получение последнего granted-доступа
+func (s *PaymentService) GetAccess(ctx context.Context, userID int64, role string) (*model.AccessResponse, error) {
+	query := `
+		SELECT amount, quantity, until
+		FROM payments
+		WHERE user_id = $1 AND role = $2 AND status = 'granted'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	row := s.repo.DB.QueryRow(ctx, query, userID, role)
+
+	var resp model.AccessResponse
+	if err := row.Scan(&resp.Amount, &resp.Count, &resp.Until); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &resp, nil
+}
+
+
+
+func (s *PaymentService) CreatePaymentWithAccess(ctx context.Context, userID int64, role string, amount float64, count int, until time.Time) error {
+	req := model.CreatePaymentRequest{
+		ID:        strconv.FormatInt(userID, 10),
+		Role:      model.Role(role),
+		Amount:    amount,
+		Quantity:  count,
+		Currency:  "KZT",
+		InvoiceID: uuid.New().String(),
+		Description: fmt.Sprintf("Дарение доступа до %s", until.Format("2006-01-02")),
+	}
+
+	// сохраняем платёж в статусе granted
+	err := s.insertPayment(ctx, req, "granted")
+	return err
+}
+
+type AccessInfo struct {
+	Count  int       `json:"count"`
+	Amount float64   `json:"amount"`
+	Until  time.Time `json:"until"`
+}
+
+func (s *PaymentService) GetAccessInfo(ctx context.Context, userID int64, role string) (*AccessInfo, error) {
+	query := `
+		SELECT quantity, amount, created_at
+		FROM payments
+		WHERE user_id = $1 AND role = $2 AND status = 'granted'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	row := s.repo.DB.QueryRow(ctx, query, userID, role)
+
+	var count int
+	var amount float64
+	var createdAt time.Time
+
+	if err := row.Scan(&count, &amount, &createdAt); err != nil {
+		return nil, err
+	}
+
+	return &AccessInfo{
+		Count:  count,
+		Amount: amount,
+		Until:  createdAt.AddDate(0, 0, 30), // например, +30 дней от created_at
+	}, nil
 }
